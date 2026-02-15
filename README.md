@@ -1,4 +1,4 @@
-# 🔢 Optimal Sorting Visualizer
+# 🔢 Optimal Sorting Visualizer in Python
 
 An interactive **Streamlit web app** that visualizes and compares **9 sorting algorithms** across different data types. It identifies the **optimal algorithm** based on **comparisons, swaps, and execution time**, making it both educational and performance-driven.
 
