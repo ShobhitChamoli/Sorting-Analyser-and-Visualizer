@@ -1,50 +1,57 @@
 import streamlit as st
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import time
-import tempfile
 import numpy as np
-from matplotlib import style
+import time
+import pandas as pd
+import plotly.express as px
 from functools import total_ordering
+from dataclasses import dataclass
+import random
 
-plt.style.use('bmh')
-plt.rcParams.update({
-    "figure.figsize": (10, 6),
-    "axes.titlesize": 18,
-    "axes.labelsize": 14,
-    "xtick.labelsize": 12,
-    "ytick.labelsize": 12,
-    "legend.fontsize": 12,
-    "font.weight": "bold",
-    "axes.labelweight": "bold"
-})
+# ==========================================
+# 1. CONFIGURATION & STYLING
+# ==========================================
+st.set_page_config(
+    page_title="AlgoSort | Professional Sorter",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-class SortStats:
-    def __init__(self):
-        self.comparisons = 0
-        self.swaps = 0
+# Custom CSS for a professional look
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        color: #4B4B4B;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# ---------- DATA TYPE HANDLERS ----------
-def parse_input(user_input, data_type):
-    if data_type == "Integer":
-        return [int(x.strip()) for x in user_input.strip().split(',')]
-    elif data_type == "Float":
-        return [float(x.strip()) for x in user_input.strip().split(',')]
-    elif data_type == "String":
-        return [x.strip() for x in user_input.strip().split(',')]
-    elif data_type == "Custom Object":
-        # For custom objects, we expect input like: "name:age, name:age"
-        # Example: "Alice:25, Bob:30, Charlie:20"
-        objects = []
-        for item in user_input.strip().split(','):
-            name, age = item.strip().split(':')
-            objects.append(Person(name.strip(), int(age.strip())))
-        return objects
-    return []
+# ==========================================
+# 2. DATA STRUCTURES & HELPERS
+# ==========================================
+
+@dataclass
+class SortMetrics:
+    algorithm: str
+    comparisons: int
+    swaps: int
+    time_taken: float
 
 @total_ordering
 class Person:
-    """Example custom object for sorting demonstration"""
     def __init__(self, name, age):
         self.name = name
         self.age = age
@@ -56,475 +63,467 @@ class Person:
         return self.age < other.age
     
     def __repr__(self):
-        return f"{self.name}:{self.age}"
+        return f"{self.name}\n({self.age})"
 
-# ---------- SORTING ALGORITHMS WITH ORDER CONTROL ----------
-def bubble_sort(arr, stats, frames, ascending=True):
-    n = len(arr)
-    for i in range(n):
-        for j in range(n - i - 1):
-            stats.comparisons += 1
-            if (arr[j] > arr[j + 1]) if ascending else (arr[j] < arr[j + 1]):
-                arr[j], arr[j + 1] = arr[j + 1], arr[j]
-                stats.swaps += 1
-                frames.append((arr.copy(), (j, j+1)))
-            else:
-                frames.append((arr.copy(), None))
-    return arr
+class DataHandler:
+    @staticmethod
+    def generate_random(data_type, count=15):
+        if data_type == "Integer":
+            return [random.randint(1, 100) for _ in range(count)]
+        elif data_type == "Float":
+            return [round(random.uniform(0.1, 10.0), 2) for _ in range(count)]
+        elif data_type == "String":
+            words = ["Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig", "Grape", "Honey", "Ice", "Jack", "Kiwi", "Lemon"]
+            return random.sample(words, min(count, len(words)))
+        elif data_type == "Custom Object":
+            names = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Heidi"]
+            return [Person(n, random.randint(18, 60)) for n in random.sample(names, min(count, len(names)))]
+        return []
 
-def insertion_sort(arr, stats, frames, ascending=True):
-    for i in range(1, len(arr)):
-        key = arr[i]
-        j = i - 1
-        while j >= 0 and ((arr[j] > key) if ascending else (arr[j] < key)):
-            stats.comparisons += 1
-            arr[j + 1] = arr[j]
-            j -= 1
-            stats.swaps += 1
-            frames.append((arr.copy(), (j+1, j+2)))  
-        arr[j + 1] = key
-        frames.append((arr.copy(), None))
-    return arr
+    @staticmethod
+    def parse_input(user_input, data_type):
+        try:
+            if not user_input.strip():
+                return []
+            
+            parts = user_input.split(',')
+            
+            if data_type == "Integer":
+                return [int(x.strip()) for x in parts]
+            elif data_type == "Float":
+                return [float(x.strip()) for x in parts]
+            elif data_type == "String":
+                return [x.strip() for x in parts]
+            elif data_type == "Custom Object":
+                objects = []
+                for item in parts:
+                    if ':' in item:
+                        name, age = item.strip().split(':')
+                        objects.append(Person(name.strip(), int(age.strip())))
+                return objects
+        except Exception:
+            return None
+        return []
 
-def selection_sort(arr, stats, frames, ascending=True):
-    n = len(arr)
-    for i in range(n):
-        sel_idx = i
-        for j in range(i + 1, n):
-            stats.comparisons += 1
-            if (arr[j] < arr[sel_idx]) if ascending else (arr[j] > arr[sel_idx]):
-                sel_idx = j
-            frames.append((arr.copy(), None))
-        if sel_idx != i:
-            arr[i], arr[sel_idx] = arr[sel_idx], arr[i]
-            stats.swaps += 1
-            frames.append((arr.copy(), (i, sel_idx)))
-        else:
-            frames.append((arr.copy(), None))
-    return arr
+# ==========================================
+# 3. SORTING ALGORITHMS
+# ==========================================
+class SortEngine:
+    def __init__(self):
+        self.stats = {"comparisons": 0, "swaps": 0}
+        self.frames = []
 
-def merge_sort(arr, stats, frames, ascending=True):
-    def merge_sort_recursive(sub_arr, start_idx):
-        if len(sub_arr) > 1:
-            mid = len(sub_arr) // 2
-            L = sub_arr[:mid]
-            R = sub_arr[mid:]
+    def reset(self):
+        self.stats = {"comparisons": 0, "swaps": 0}
+        self.frames = []
 
-            merge_sort_recursive(L, start_idx)
-            merge_sort_recursive(R, start_idx + mid)
+    def _record(self, arr, highlights=None):
+        # Deep copy needed for objects/lists
+        self.frames.append((list(arr), highlights))
 
-            i = j = k = 0
-            while i < len(L) and j < len(R):
-                stats.comparisons += 1
-                if (L[i] < R[j]) if ascending else (L[i] > R[j]):
-                    sub_arr[k] = L[i]
+    # --- Wrapper to run any algo ---
+    def run(self, algo_name, arr, ascending=True):
+        self.reset()
+        start_time = time.time()
+        
+        target_func = getattr(self, algo_name.lower().replace(" ", "_"))
+        sorted_arr = target_func(arr, ascending)
+        
+        end_time = time.time()
+        return SortMetrics(algo_name, self.stats["comparisons"], self.stats["swaps"], end_time - start_time), self.frames
+
+    # --- Algorithms ---
+    def bubble_sort(self, arr, ascending):
+        n = len(arr)
+        for i in range(n):
+            for j in range(n - i - 1):
+                self.stats["comparisons"] += 1
+                condition = (arr[j] > arr[j + 1]) if ascending else (arr[j] < arr[j + 1])
+                
+                if condition:
+                    arr[j], arr[j + 1] = arr[j + 1], arr[j]
+                    self.stats["swaps"] += 1
+                    self._record(arr, (j, j+1))
+                else:
+                    self._record(arr, (j, j+1)) # Record check even if no swap
+        return arr
+
+    def insertion_sort(self, arr, ascending):
+        for i in range(1, len(arr)):
+            key = arr[i]
+            j = i - 1
+            while j >= 0:
+                self.stats["comparisons"] += 1
+                condition = (arr[j] > key) if ascending else (arr[j] < key)
+                if condition:
+                    arr[j + 1] = arr[j]
+                    j -= 1
+                    self.stats["swaps"] += 1
+                    self._record(arr, (j+1, j+2))
+                else:
+                    break
+            arr[j + 1] = key
+            self._record(arr, (j+1, j+1))
+        return arr
+
+    def selection_sort(self, arr, ascending):
+        n = len(arr)
+        for i in range(n):
+            idx = i
+            for j in range(i + 1, n):
+                self.stats["comparisons"] += 1
+                condition = (arr[j] < arr[idx]) if ascending else (arr[j] > arr[idx])
+                if condition:
+                    idx = j
+                self._record(arr, (i, j)) # Visualization check
+            
+            if idx != i:
+                arr[i], arr[idx] = arr[idx], arr[i]
+                self.stats["swaps"] += 1
+                self._record(arr, (i, idx))
+        return arr
+
+    def quick_sort(self, arr, ascending):
+        def partition(low, high):
+            pivot = arr[high]
+            i = low - 1
+            for j in range(low, high):
+                self.stats["comparisons"] += 1
+                condition = (arr[j] <= pivot) if ascending else (arr[j] >= pivot)
+                if condition:
+                    i += 1
+                    arr[i], arr[j] = arr[j], arr[i]
+                    self.stats["swaps"] += 1
+                    self._record(arr, (i, j))
+            arr[i + 1], arr[high] = arr[high], arr[i + 1]
+            self.stats["swaps"] += 1
+            self._record(arr, (i+1, high))
+            return i + 1
+
+        def _quick_sort_recursive(low, high):
+            if low < high:
+                pi = partition(low, high)
+                _quick_sort_recursive(low, pi - 1)
+                _quick_sort_recursive(pi + 1, high)
+
+        _quick_sort_recursive(0, len(arr) - 1)
+        return arr
+
+    def merge_sort(self, arr, ascending):
+        def _merge(start, mid, end):
+            left = arr[start:mid+1]
+            right = arr[mid+1:end+1]
+            i = j = 0
+            k = start
+            
+            while i < len(left) and j < len(right):
+                self.stats["comparisons"] += 1
+                condition = (left[i] <= right[j]) if ascending else (left[i] >= right[j])
+                if condition:
+                    arr[k] = left[i]
                     i += 1
                 else:
-                    sub_arr[k] = R[j]
+                    arr[k] = right[j]
                     j += 1
-                stats.swaps += 1
-                arr[start_idx:start_idx+len(sub_arr)] = sub_arr
-                frames.append((arr.copy(), None))
+                self.stats["swaps"] += 1 # Technically assignments
                 k += 1
-
-            while i < len(L):
-                sub_arr[k] = L[i]
+                self._record(arr, (k, k)) # Highlight current write
+            
+            while i < len(left):
+                arr[k] = left[i]
                 i += 1
                 k += 1
-                stats.swaps += 1
-                arr[start_idx:start_idx+len(sub_arr)] = sub_arr
-                frames.append((arr.copy(), None))
+                self.stats["swaps"] += 1
+                self._record(arr, (k, k))
 
-            while j < len(R):
-                sub_arr[k] = R[j]
+            while j < len(right):
+                arr[k] = right[j]
                 j += 1
                 k += 1
-                stats.swaps += 1
-                arr[start_idx:start_idx+len(sub_arr)] = sub_arr
-                frames.append((arr.copy(), None))
+                self.stats["swaps"] += 1
+                self._record(arr, (k, k))
 
-    merge_sort_recursive(arr, 0)
-    return arr
-def quick_sort(arr, stats, frames, ascending=True):
-    def partition(low, high):
-        pivot = arr[high]
-        i = low - 1
-        for j in range(low, high):
-            stats.comparisons += 1
-            if (arr[j] <= pivot) if ascending else (arr[j] >= pivot):
-                i += 1
-                arr[i], arr[j] = arr[j], arr[i]
-                stats.swaps += 1
-                frames.append((arr.copy(), (i, j)))
-            else:
-                frames.append((arr.copy(), None))
-        arr[i + 1], arr[high] = arr[high], arr[i + 1]
-        stats.swaps += 1
-        frames.append((arr.copy(), (i + 1, high)))
-        return i + 1
+        def _sort(start, end):
+            if start < end:
+                mid = (start + end) // 2
+                _sort(start, mid)
+                _sort(mid + 1, end)
+                _merge(start, mid, end)
 
-    def quick_sort_recursive(low, high):
-        if low < high:
-            pi = partition(low, high)
-            quick_sort_recursive(low, pi - 1)
-            quick_sort_recursive(pi + 1, high)
-
-    quick_sort_recursive(0, len(arr) - 1)
-    return arr
-
-def heap_sort(arr, stats, frames, ascending=True):
-    def heapify(n, i):
-        extreme = i
-        l = 2 * i + 1
-        r = 2 * i + 2
-
-        if l < n:
-            stats.comparisons += 1
-            if (arr[l] > arr[extreme]) if ascending else (arr[l] < arr[extreme]):
-                extreme = l
-        if r < n:
-            stats.comparisons += 1
-            if (arr[r] > arr[extreme]) if ascending else (arr[r] < arr[extreme]):
-                extreme = r
-        if extreme != i:
-            arr[i], arr[extreme] = arr[extreme], arr[i]
-            stats.swaps += 1
-            frames.append((arr.copy(), (i, extreme)))
-            heapify(n, extreme)
-        else:
-            frames.append((arr.copy(), None))
-
-    n = len(arr)
-    for i in range(n // 2 - 1, -1, -1):
-        heapify(n, i)
-    for i in range(n - 1, 0, -1):
-        arr[i], arr[0] = arr[0], arr[i]
-        stats.swaps += 1
-        frames.append((arr.copy(), (i, 0)))
-        heapify(i, 0)
-    return arr if ascending else arr[::-1]
-
-def counting_sort(arr, stats, frames, ascending=True):
-    # Only works for integers
-    if not all(isinstance(x, int) for x in arr):
+        _sort(0, len(arr) - 1)
         return arr
-    
-    max_val = max(arr)
-    count = [0] * (max_val + 1)
-    output = [0] * len(arr)
 
-    for num in arr:
-        count[num] += 1
-        stats.comparisons += 1
-
-    for i in range(1, len(count)):
-        count[i] += count[i - 1]
-
-    for num in reversed(arr):
-        output[count[num] - 1] = num
-        count[num] -= 1
-        stats.swaps += 1
-        frames.append((output.copy(), None))
-
-    for i in range(len(arr)):
-        arr[i] = output[i]
-
-    return arr if ascending else arr[::-1]
-
-def radix_sort(arr, stats, frames, ascending=True):
-    # Only works for integers
-    if not all(isinstance(x, int) for x in arr):
-        return arr
-        
-    def counting_sort_exp(arr, exp):
+    def heap_sort(self, arr, ascending):
         n = len(arr)
-        output = [0] * n
-        count = [0] * 10
+        
+        def heapify(n, i):
+            extreme = i
+            l = 2 * i + 1
+            r = 2 * i + 2
 
-        for i in range(n):
-            index = arr[i] // exp
-            count[index % 10] += 1
-            stats.comparisons += 1
+            if l < n:
+                self.stats["comparisons"] += 1
+                if (arr[l] > arr[extreme]) if ascending else (arr[l] < arr[extreme]):
+                    extreme = l
+            if r < n:
+                self.stats["comparisons"] += 1
+                if (arr[r] > arr[extreme]) if ascending else (arr[r] < arr[extreme]):
+                    extreme = r
+            
+            if extreme != i:
+                arr[i], arr[extreme] = arr[extreme], arr[i]
+                self.stats["swaps"] += 1
+                self._record(arr, (i, extreme))
+                heapify(n, extreme)
 
-        for i in range(1, 10):
-            count[i] += count[i - 1]
+        for i in range(n // 2 - 1, -1, -1):
+            heapify(n, i)
+        
+        for i in range(n - 1, 0, -1):
+            arr[i], arr[0] = arr[0], arr[i]
+            self.stats["swaps"] += 1
+            self._record(arr, (i, 0))
+            heapify(i, 0)
+        return arr
 
-        for i in range(n - 1, -1, -1):
-            index = arr[i] // exp
-            output[count[index % 10] - 1] = arr[i]
-            count[index % 10] -= 1
-            stats.swaps += 1
+    def shell_sort(self, arr, ascending):
+        n = len(arr)
+        gap = n // 2
+        while gap > 0:
+            for i in range(gap, n):
+                temp = arr[i]
+                j = i
+                while j >= gap:
+                    self.stats["comparisons"] += 1
+                    cond = (arr[j - gap] > temp) if ascending else (arr[j - gap] < temp)
+                    if cond:
+                        arr[j] = arr[j - gap]
+                        self.stats["swaps"] += 1
+                        j -= gap
+                        self._record(arr, (j, i))
+                    else:
+                        break
+                arr[j] = temp
+                self._record(arr, (j, i))
+            gap //= 2
+        return arr
 
-        for i in range(n):
-            arr[i] = output[i]
-            frames.append((arr.copy(), None))
+# ==========================================
+# 4. VISUALIZATION
+# ==========================================
 
-    max_val = max(arr)
-    exp = 1
-    while max_val // exp > 0:
-        counting_sort_exp(arr, exp)
-        exp *= 10
-
-    return arr if ascending else arr[::-1]
-
-def shell_sort(arr, stats, frames, ascending=True):
-    n = len(arr)
+def render_plot(data, highlights, data_type, ax):
+    ax.clear()
+    n = len(data)
     
-    # Generate Knuth's gap sequence: 1, 4, 13, ...
-    gaps = []
-    gap = 1
-    while gap < n:
-        gaps.insert(0, gap)
-        gap = 3 * gap + 1
-
-    # Start sorting with each gap
-    for gap in gaps:
-        for i in range(gap, n):
-            temp = arr[i]
-            j = i
-            while j >= gap and ((arr[j - gap] > temp) if ascending else (arr[j - gap] < temp)):
-                stats.comparisons += 1
-                arr[j] = arr[j - gap]
-                stats.swaps += 1
-                frames.append((arr.copy(), (j, j - gap)))
-                j -= gap
-            # One final comparison if condition failed first time
-            if j != i:
-                stats.comparisons += 1
-            arr[j] = temp
-            frames.append((arr.copy(), (j, i)))
-    return arr
-
-# ---------------- Visualization ----------------
-def visualize(frames, data_type):
-    fig, ax = plt.subplots()
-    n = len(frames[0][0])
-    
-    # Get max value for y-axis limit
+    # Determine heights and labels
     if data_type in ["Integer", "Float"]:
-        max_val = max(frames[0][0])
-        y_limit = max_val + (0.1 * max_val) if max_val != 0 else 10
-    else:
-        # For strings and objects, we'll use a fixed scale
-        y_limit = len(frames[0][0]) + 2
+        heights = data
+        labels = [str(x) for x in data]
+    elif data_type == "Custom Object":
+        heights = [obj.age for obj in data]
+        labels = [str(obj) for obj in data]
+    else: # String
+        # Use index as height for visual sort, label is the string
+        sorted_ref = sorted(list(set(data)))
+        heights = [sorted_ref.index(x) + 1 for x in data]
+        labels = data
+
+    colors = ['#4F8BF9'] * n
+    if highlights:
+        idx1, idx2 = highlights
+        if 0 <= idx1 < n: colors[idx1] = '#FF4B4B'
+        if 0 <= idx2 < n: colors[idx2] = '#FF4B4B'
+
+    ax.bar(range(n), heights, color=colors, alpha=0.9)
     
-    bar_rects = ax.bar(range(n), [i+1 for i in range(n)] if data_type in ["String", "Custom Object"] else frames[0][0], 
-                      align="edge", color='skyblue')
-    ax.set_xlim(-0.5, n - 0.5)
-    ax.set_ylim(0, y_limit)
-    text = ax.text(0.02, 0.95, "", transform=ax.transAxes)
-
-    value_texts = []
-    for rect in bar_rects:
-        height = rect.get_height()
-        if data_type in ["Integer", "Float"]:
-            txt = ax.text(rect.get_x() + rect.get_width()/2, height + 0.5, 
-                         f'{int(height) if data_type == "Integer" else height:.1f}', 
-                         ha='center', va='bottom', fontweight='bold')
-        else:
-            idx = int(rect.get_x())
-            txt = ax.text(rect.get_x() + rect.get_width()/2, height + 0.5, 
-                         str(frames[0][0][idx]), 
-                         ha='center', va='bottom', fontweight='bold')
-        value_texts.append(txt)
-
-    def update_plot(data):
-        arr, swap_idx = data
-        for rect, val, txt in zip(bar_rects, range(n) if data_type in ["String", "Custom Object"] else arr, value_texts):
-            if data_type in ["Integer", "Float"]:
-                rect.set_height(val)
-                txt.set_text(f'{int(val) if data_type == "Integer" else val:.1f}')
-            else:
-                idx = int(rect.get_x())
-                txt.set_text(str(arr[idx]))
-            
-            rect.set_color('skyblue')
-            txt.set_x(rect.get_x() + rect.get_width()/2)
-            txt.set_y(rect.get_height() + 0.5)
-            txt.set_color('black')
-
-        if swap_idx is not None:
-            i, j = swap_idx
-            bar_rects[i].set_color('red')
-            bar_rects[j].set_color('red')
-            value_texts[i].set_color('red')
-            value_texts[j].set_color('red')
-
-        text.set_text(f"Step: {frames.index(data)}")
-
-    ani = animation.FuncAnimation(fig, update_plot, frames=frames, interval=500, repeat=False)
-    temp_gif = tempfile.NamedTemporaryFile(delete=False, suffix=".gif")
-    ani.save(temp_gif.name, writer='pillow')
-    plt.close(fig)
-    st.image(temp_gif.name)
-
-# ---------------- Runner and UI ----------------
-def run_algorithm(algorithm_func, arr, ascending):
-    stats = SortStats()
-    frames = [(arr.copy(), None)]
-    start = time.time()
-    algorithm_func(arr.copy(), stats, frames, ascending)
-    end = time.time()
-    return stats.comparisons, stats.swaps, end - start, frames
-
-def user_guide():
-    st.title("📘 User Guide")
-    st.markdown("""
-    This app demonstrates **9 sorting algorithms** with visual animation:
-
-    ### Supported Data Types:
-    - **Integers**: 42, 17, 8, 56, 23
-    - **Floats**: 3.14, 2.71, 1.618, 0.5
-    - **Strings**: apple, banana, cherry, date
-    - **Custom Objects**: name:age pairs (e.g., Alice:25, Bob:30)
-
-    ### Algorithms:
-    - Bubble Sort
-    - Insertion Sort
-    - Selection Sort
-    - Merge Sort
-    - Quick Sort
-    - Heap Sort
-    - Counting Sort (integers only)
-    - Radix Sort (integers only)
-    - Shell Sort
-
-    ### Selection Logic:
-    - Best algorithm must have **minimum swaps AND comparisons**
-    - Then it is selected based on the **lowest execution time**
-    - If no such algorithm exists, then pick one with **lowest time only**
-
-    ### How to Use:
-    1. Go to "Run Sort Visualizer"
-    2. Select data type and enter values
-    3. Choose sort order and hit Run
-    4. View performance + animation!
-    """)
-
-def run_page():
-    st.title("⚙ Run Sort Visualizer")
+    # Formatting
+    ax.set_xticks(range(n))
+    ax.set_xticklabels(labels, rotation=45 if n > 10 else 0, ha='right', fontsize=9)
+    ax.set_yticks([]) # Hide y axis for cleaner look
     
-    # Data type selection
-    data_type = st.selectbox("Select Data Type", 
-                           ["Integer", "Float", "String", "Custom Object"],
-                           help="Choose the type of data you want to sort")
-    
-    # Input examples based on data type
-    examples = {
-        "Integer": "42, 17, 8, 56, 23, 91, 33, 5, 70, 12",
-        "Float": "3.14, 2.71, 1.618, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0",
-        "String": "apple, banana, cherry, date, elderberry, fig, grape, honeydew",
-        "Custom Object": "Alice:25, Bob:30, Charlie:20, David:35, Eve:28"
-    }
-    
-    user_input = st.text_input(f"Enter {data_type} values separated by commas:", examples[data_type])
-    
-    if data_type == "Custom Object":
-        st.info("For custom objects, enter in format 'name:age, name:age'")
-    
-    sort_order = st.radio("Choose Sort Order", ["Ascending", "Descending"])
-    num_trials = 10  # Number of trials for averaging
+    # Value labels on top of bars
+    if n < 20:
+        for i, v in enumerate(heights):
+            ax.text(i, v + (max(heights)*0.01), str(v) if data_type != "Custom Object" else "", 
+                   ha='center', va='bottom', fontweight='bold', fontsize=8)
 
-    if st.button("Run Sorting Visualization"):
-        try:
-            arr = parse_input(user_input, data_type)
-            if not arr:
-                st.error("Please enter valid values")
-                return
-                
-            ascending = sort_order == "Ascending"
+    ax.set_title("Current State", fontsize=14, fontweight='bold', color="#333")
+    return ax
 
-            algorithms = {
-                "Bubble Sort": bubble_sort,
-                "Insertion Sort": insertion_sort,
-                "Selection Sort": selection_sort,
-                "Merge Sort": merge_sort,
-                "Quick Sort": quick_sort,
-                "Heap Sort": heap_sort,
-                "Shell Sort": shell_sort,
-            }
-            
-            # Only add counting and radix sort for integers
-            if data_type == "Integer":
-                algorithms["Counting Sort"] = counting_sort
-                algorithms["Radix Sort"] = radix_sort
-
-            results = {}
-
-            for name, func in algorithms.items():
-                total_comps, total_swaps, total_time = 0, 0, 0
-                all_frames = None
-
-                for trial in range(num_trials):
-                    comps, swaps, exec_time, frames = run_algorithm(func, arr.copy(), ascending)
-                    total_comps += comps
-                    total_swaps += swaps
-                    total_time += exec_time
-                    if trial == 0:
-                        all_frames = frames
-
-                results[name] = {
-                    "comparisons": total_comps // num_trials,
-                    "swaps": total_swaps // num_trials,
-                    "time": total_time / num_trials,
-                    "frames": all_frames
-                }
-
-            # Calculate averages
-            avg_swaps = np.mean([v["swaps"] for v in results.values()])
-            avg_comps = np.mean([v["comparisons"] for v in results.values()])
-
-            # Filter candidates
-            candidates = {
-                name: data for name, data in results.items()
-                if data["swaps"] <= avg_swaps and data["comparisons"] <= avg_comps
-            }
-
-            if candidates:
-                best_algo = min(candidates.items(), key=lambda x: x[1]["time"])[0]
-            else:
-                best_algo = min(results.items(), key=lambda x: x[1]["time"])[0]
-
-            st.success(f"✅ Best Algorithm: {best_algo}")
-
-            # Rank algorithms
-            ranked_algos = sorted(
-                results.items(),
-                key=lambda x: (
-                    0 if x[1]["swaps"] <= avg_swaps and x[1]["comparisons"] <= avg_comps else 1,
-                    x[1]["time"]
-                )
-            )
-
-            # Prepare data for table with Rank
-            ranked_table = []
-            for rank, (name, data) in enumerate(ranked_algos, start=1):
-                ranked_table.append({
-                    "Rank": rank,
-                    "Algorithm": name,
-                    "Swaps": data["swaps"],
-                    "Comparisons": data["comparisons"],
-                    "Time (s)": f"{data['time']:.6f}"
-                })
-
-            st.markdown("### 🏆 Algorithm Rankings")
-            st.table(ranked_table)
-
-            st.markdown(f"### 🎞 Sorting Animation: {best_algo}")
-            visualize(results[best_algo]["frames"], data_type)
-
-        except ValueError as e:
-            st.error(f"Invalid input format: {str(e)}")
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
+# ==========================================
+# 5. MAIN UI LOGIC
+# ==========================================
 
 def main():
-    st.set_page_config(page_title="Optimal Sorting Visualizer", layout="wide")
-    page = st.sidebar.selectbox("Select Page", ["📘 User Guide", "⚙ Run Sort Visualizer"])
-    if page == "📘 User Guide":
-        user_guide()
-    else:
-        run_page()
+    # --- Sidebar Controls ---
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        
+        data_type = st.selectbox("Data Type", ["Integer", "Float", "String", "Custom Object"])
+        
+        # Data Input Area
+        st.subheader("Data Input")
+        input_container = st.empty()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🎲 Randomize"):
+                st.session_state['data_input'] = DataHandler.generate_random(data_type)
+        with col2:
+            if st.button("🧹 Clear"):
+                st.session_state['data_input'] = []
+
+        # Default values if not in session state
+        if 'data_input' not in st.session_state:
+            st.session_state['data_input'] = DataHandler.generate_random(data_type, count=10)
+
+        # Formatting current data for text area
+        current_data = st.session_state['data_input']
+        if data_type == "Custom Object":
+            str_val = ", ".join([repr(x).replace('\n', ':').replace('(', '').replace(')', '') for x in current_data])
+        else:
+            str_val = ", ".join(map(str, current_data))
+
+        user_input = st.text_area("Values (comma separated)", value=str_val, height=100)
+        
+        # Sort Settings
+        st.divider()
+        sort_order = st.radio("Order", ["Ascending", "Descending"], horizontal=True)
+        ascending = sort_order == "Ascending"
+        
+        speed = st.select_slider("Animation Speed", options=["Slow", "Medium", "Fast", "Ultra"], value="Medium")
+        speed_map = {"Slow": 0.3, "Medium": 0.1, "Fast": 0.01, "Ultra": 0.0001}
+
+        st.divider()
+        st.info("ℹ️ **Tip:** Select specific algorithms below to compare performance.")
+
+    # --- Main Page ---
+    st.markdown('<div class="main-header">📊 AlgoSort Visualizer</div>', unsafe_allow_html=True)
+
+    # Parse Data
+    data = DataHandler.parse_input(user_input, data_type)
+    
+    if not data or len(data) < 2:
+        st.warning("⚠️ Please enter at least 2 valid data points to start sorting.")
+        return
+
+    # Tabs for modes
+    tab1, tab2 = st.tabs(["🎥 Live Visualization", "📈 Benchmark Comparison"])
+
+    engine = SortEngine()
+    algorithms = ["Bubble Sort", "Insertion Sort", "Selection Sort", "Merge Sort", "Quick Sort", "Heap Sort", "Shell Sort"]
+
+    # --- Tab 1: Visualization ---
+    with tab1:
+        col_algo, col_action = st.columns([3, 1])
+        with col_algo:
+            selected_algo = st.selectbox("Select Algorithm to Visualize", algorithms)
+        with col_action:
+            st.write("") # Spacer
+            start_btn = st.button("▶️ Start Animation", type="primary", use_container_width=True)
+
+        plot_spot = st.empty()
+        stats_spot = st.empty()
+
+        if start_btn:
+            # 1. Run Algorithm to get frames
+            metrics, frames = engine.run(selected_algo, data.copy(), ascending)
+            
+            # 2. Setup Plot
+            fig, ax = plt.subplots(figsize=(10, 5))
+            plt.style.use('seaborn-v0_8-whitegrid')
+            
+            # 3. Animate Loop
+            progress_bar = st.progress(0)
+            
+            for i, (arr_state, highlights) in enumerate(frames):
+                render_plot(arr_state, highlights, data_type, ax)
+                plot_spot.pyplot(fig)
+                
+                # Update stats live
+                stats_spot.markdown(f"""
+                <div style="display: flex; justify-content: center; gap: 20px;">
+                    <span style="font-weight:bold; color:#4F8BF9">Step: {i+1}/{len(frames)}</span>
+                    <span>🔄 Swaps: {engine.stats['swaps']}</span>
+                    <span>🔎 Comparisons: {engine.stats['comparisons']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                progress_bar.progress((i + 1) / len(frames))
+                time.sleep(speed_map[speed])
+            
+            plt.close(fig)
+            st.success(f"✅ {selected_algo} Completed in {metrics.time_taken:.4f} seconds!")
+
+        # Initial Static Preview
+        elif not start_btn:
+            fig, ax = plt.subplots(figsize=(10, 5))
+            render_plot(data, None, data_type, ax)
+            plot_spot.pyplot(fig)
+            stats_spot.info("Ready to sort. Click Start Animation.")
+
+    # --- Tab 2: Benchmark ---
+    with tab2:
+        st.subheader("🏆 Algorithm Tournament")
+        st.caption("Running all algorithms on the current dataset to find the most efficient one.")
+        
+        if st.button("🚀 Run Benchmark"):
+            results = []
+            progress = st.progress(0)
+            
+            for idx, algo in enumerate(algorithms):
+                # Run algo (no visual recording needed ideally, but re-using run for simplicity)
+                metrics, _ = engine.run(algo, data.copy(), ascending)
+                results.append(metrics)
+                progress.progress((idx + 1) / len(algorithms))
+            
+            # Convert to DataFrame
+            df = pd.DataFrame([vars(m) for m in results])
+            
+            # Determine Winner (Weighted score: Time usually most important, then comparisons)
+            # Simple logic: Sort by Time
+            df_sorted = df.sort_values(by="time_taken").reset_index(drop=True)
+            winner = df_sorted.iloc[0]
+
+            # --- Display Winner ---
+            st.markdown(f"""
+            <div class="metric-card" style="border-left: 5px solid #2ecc71;">
+                <h3 style="margin:0; color:#27ae60">🏆 Winner: {winner['algorithm']}</h3>
+                <p>Time: {winner['time_taken']:.6f}s | Swaps: {winner['swaps']} | Comps: {winner['comparisons']}</p>
+            </div>
+            <br>
+            """, unsafe_allow_html=True)
+
+            # --- Metrics Columns ---
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.subheader("⏱️ Speed (Time)")
+                fig_time = px.bar(df_sorted, x='algorithm', y='time_taken', 
+                                  color='time_taken', color_continuous_scale='RdYlGn_r',
+                                  title="Execution Time (seconds)")
+                fig_time.update_layout(xaxis_title="", showlegend=False)
+                st.plotly_chart(fig_time, use_container_width=True)
+            
+            with c2:
+                st.subheader("🔎 Efficiency (Comps)")
+                fig_comp = px.bar(df.sort_values('comparisons'), x='algorithm', y='comparisons', 
+                                  color='comparisons', color_continuous_scale='Blues',
+                                  title="Total Comparisons")
+                fig_comp.update_layout(xaxis_title="", showlegend=False)
+                st.plotly_chart(fig_comp, use_container_width=True)
+
+            with c3:
+                st.subheader("🔄 Work (Swaps)")
+                fig_swap = px.bar(df.sort_values('swaps'), x='algorithm', y='swaps', 
+                                  color='swaps', color_continuous_scale='Oranges',
+                                  title="Total Swaps")
+                fig_swap.update_layout(xaxis_title="", showlegend=False)
+                st.plotly_chart(fig_swap, use_container_width=True)
+                
+            # Detailed Table
+            st.subheader("📋 Detailed Results")
+            st.dataframe(df_sorted.style.highlight_min(axis=0, color='#d4edda').format({"time_taken": "{:.6f}"}), use_container_width=True)
 
 if __name__ == "__main__":
     main()
